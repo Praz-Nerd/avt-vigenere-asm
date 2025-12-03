@@ -6,8 +6,9 @@ exit_dos MACRO
 ENDM
 
 .data
-    keyFileName db "key.txt", 0        
-    messageFileName db "message.txt", 0 
+    psp_seg dw 0
+    keyFileName db 128 dup(0)        
+    messageFileName db 128 dup(0) 
 
     keySize dw ?                       
     chunkSize dw ?                     
@@ -18,8 +19,14 @@ ENDM
 
 .code
 start:
+    mov dx, ds
     mov ax, @data
     mov ds, ax
+    mov psp_seg, dx
+
+    call parse_args
+    cmp ax, 1
+    je endProcessing
 
     lea ax, keyFileName
     push ax
@@ -166,5 +173,78 @@ writeChunkDone:
     ret 6
 writeChunk endp
 
+; parse command line arguments
+; out: keyFileName = argument1, messageFileName = argument2
+; AX = 0 if args found, 1 if no args
+parse_args proc near
+    mov es, word ptr psp_seg
+    
+    xor cx, cx   
+    mov cl, es:[80h]
+    cmp cl, 0
+    je no_args
+    
+    mov si, 81h
+      
+skip_leading:
+    mov al, es:[si]
+    cmp al, ' '
+    jne start_arg1
+    inc si
+    loop skip_leading
+    jmp no_args     
+    
+start_arg1:
+    mov di, offset keyFileName
+parse_arg1:
+    mov al, es:[si]
+    cmp al, 0Dh     ; Carriage return
+    je end_of_line
+    cmp al, ' '     
+    je arg1_done
+    mov [di], al
+    inc di
+    inc si
+    loop parse_arg1
+    jmp end_of_line 
+    
+arg1_done:
+    mov byte ptr [di], 0
+    
+
+skip_spaces:
+    mov al, es:[si]
+    cmp al, ' '
+    jne start_arg2
+    inc si
+    loop skip_spaces
+    jmp end_of_line
+    
+start_arg2:
+    mov di, offset messageFileName
+parse_arg2:
+    mov al, es:[si]
+    cmp al, 0Dh     ; Carriage return
+    je arg2_done
+    mov [di], al
+    inc di
+    inc si
+    loop parse_arg2
+    
+arg2_done:
+    mov byte ptr [di], 0
+    mov ax, 0
+    ret 0
+    
+end_of_line:
+    mov ax, 1
+    ret 0
+    
+no_args:
+    mov byte ptr [keyFileName], 0
+    mov byte ptr [messageFileName], 0
+    mov ax, 1
+    ret 0
+parse_args endp
 
 end start
