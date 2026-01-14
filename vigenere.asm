@@ -1,5 +1,5 @@
 .model large
-.stack 40h
+.stack 20h
 exit_dos MACRO
 	MOV AX, 4c00h
 	INT 21h
@@ -78,7 +78,7 @@ processChunks:
     push ax                ; buffer offset
     mov ax, inputFileHandle
     push ax                ; file handle
-    mov ax, 64
+    mov ax, keySize
     push ax                ; chunk size
     call readChunk
     mov chunkSize, ax
@@ -87,7 +87,42 @@ processChunks:
     jmp doneProcessing
 skip_doneProcessing:
 
+    cmp AX, keySize
+    je vig_start ;if the same size was read
+    mov keySize, AX ;else, update size of key
     ;Encode/decode the chunk using Vigenère cipher
+vig_start:
+        ;clear registers and prepare loop
+        mov CX, keySize
+        xor SI, SI
+        xor DI, DI
+        xor BX, BX
+vig_loop:
+;A = 65
+    mov AL, chunkBuffer[SI]     ;load byte from input buffer
+    mov AH, keyBuffer[DI] ;load key byte
+    ;vigenere logic
+    sub AL, 65 ;subtract to get index
+    sub AH, 65
+    push AX
+    cmp is_decryption, 0
+    je do_encryption
+    
+    call PrepDecryption
+    jmp modulo_computation
+
+do_encryption:
+    call PrepEncryption
+
+modulo_computation:
+    mov BH, AL ;get result from addition or subtraction
+    push BX
+    call ModuloWith26
+    add AL, 65 ;add back to ascii
+    mov chunkBuffer[SI], AL  ;store result into chunkBuffer
+    inc SI
+    inc DI
+    loop vig_loop
 
     ; write the chunk to the output file
     lea ax, chunkBuffer
@@ -364,5 +399,56 @@ no_args:
     mov ax, 1
     ret 0
 parse_args endp
+
+PrepEncryption proc near ;PrepEncryption(char a, char b) returns addition_result
+    push BP
+    mov BP, SP
+    ;stack: BP, IP, a, b
+    xor AX, AX
+    mov AL, SS:[BP+5] ;get first byte from stack
+    mov AH, SS:[BP+4] ;get second byte from stack
+    add AL, AH
+    xor AH, AH
+    pop BP
+    ret 2 ;clear stack and give execution back to main
+PrepEncryption endp
+
+PrepDecryption proc near ;PrepDecryption(char a, char b) returns addition_result
+    push BP
+    mov BP, SP
+    ;stack: BP, IP, a, b
+    xor AX, AX
+    mov AH, SS:[BP+5] ;get first byte from stack
+    mov AL, SS:[BP+4] ;get second byte from stack
+    sub AL, AH
+    cmp AL, 0 ;handle negative values
+    jge no_wrap
+    add AL, 26
+    no_wrap:
+        xor AH, AH
+        pop BP
+        ret 2 ;clear stack and give execution back to main
+PrepDecryption endp
+
+ModuloWith26 proc near ;ModuloWith26(char a)
+    push BP
+    mov BP, SP
+    ;stack: BP, IP, a
+    xor AX, AX
+    xor BX, BX
+    mov AL, SS:[BP+5] ;get byte from stack
+    mov BL, 26
+    cmp AL, BL
+    jl no_computation ;if less than 26, that is modulo result
+    ;else, do modulo computation
+    div BL ;AX = AL / 26, AH = remainder
+    mov AL, AH ;move remainder to AL
+
+    no_computation:
+        xor AH, AH
+        xor BX, BX
+        pop BP
+        ret 2 ;clear stack and give execution back to main
+ModuloWith26 endp
 
 end start
