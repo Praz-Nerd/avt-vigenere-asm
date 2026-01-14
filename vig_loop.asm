@@ -79,7 +79,6 @@ ENDM
     keysize DW ?
     buffer DB 64 dup (03h)
     encbuffer DB 64 dup (03h)
-    remainder DB ?
     addition_result DB ?
     is_decryption DB 1 ;0 for encryption, 1 for decryption
 .code
@@ -104,16 +103,16 @@ start:
         jz final ;exit loop
 
         cmp AX, keysize
-        je xoring ;if the same size was read, jump to xor
+        je vig_start ;if the same size was read, jump to xor
         mov keysize, AX ;else, update size of key
 
-        xoring:
+        vig_start:
             ;clear registers and prepare loop
             mov CX, keysize
             xor SI, SI
             xor DI, DI
             xor BX, BX
-        xor_loop:
+        vig_loop:
         ;A = 65
             mov AL, buffer[SI]     ;load byte from input buffer
             mov AH, keystring[DI] ;load key byte
@@ -131,15 +130,14 @@ start:
                 call PrepEncryption
 
             modulo_computation:
-                mov BH, addition_result ;get result from addition or subtraction
+                mov BH, AL ;get result from addition or subtraction
                 push BX
                 call ModuloWith26
-                mov AL, remainder
                 add AL, 65 ;add back to ascii
                 mov encbuffer[SI], AL  ;store result into encbuffer
                 inc SI
                 inc DI
-            loop xor_loop
+            loop vig_loop
             ;write encrypted buffer to output file
             write_chunk outhandle, keysize, encbuffer
 
@@ -159,8 +157,7 @@ PrepEncryption proc near ;PrepEncryption(char a, char b) returns addition_result
     mov AL, SS:[BP+5] ;get first byte from stack
     mov AH, SS:[BP+4] ;get second byte from stack
     add AL, AH
-    mov addition_result, AL
-    xor AX, AX
+    xor AH, AH
     pop BP
     ret 2 ;clear stack and give execution back to main
 PrepEncryption endp
@@ -177,8 +174,7 @@ PrepDecryption proc near ;PrepDecryption(char a, char b) returns addition_result
     jge no_wrap
     add AL, 26
     no_wrap:
-        mov addition_result, AL
-        xor AX, AX
+        xor AH, AH
         pop BP
         ret 2 ;clear stack and give execution back to main
 PrepDecryption endp
@@ -198,8 +194,7 @@ ModuloWith26 proc near ;ModuloWith26(char a)
     mov AL, AH ;move remainder to AL
 
     no_computation:
-        mov remainder, AL
-        xor AX, AX
+        xor AH, AH
         xor BX, BX
         pop BP
         ret 2 ;clear stack and give execution back to main
