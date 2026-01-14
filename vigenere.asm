@@ -1,23 +1,23 @@
 .model large
 .stack 20h
-exit_dos MACRO
-	MOV AX, 4c00h
-	INT 21h
-ENDM
+exitDos macro
+	mov AX, 4C00h
+	int 21h
+endm
 
-close_file MACRO handle
+closeFile macro handle
     xor AX, AX
     mov AH, 3Eh ;file close function code
     mov BX, handle ;load handler into BX
     int 21h ;call interrupt
-ENDM
+endm
 
 .data
-    psp_seg dw 0
+    pspSeg dw 0
     keyFileName db 32 dup(0)        
     inputFileName db 32 dup(0)     
     outputFileName db 32 dup(0) 
-    is_decryption DB 1 ;0 for encryption, 1 for decryption
+    isDecryption db 1 ;0 for encryption, 1 for decryption
 
     keySize dw ?                       
     chunkSize dw ?                     
@@ -29,75 +29,75 @@ ENDM
 
 .code
 start:
-    mov dx, ds
-    mov ax, @data
-    mov ds, ax
-    mov psp_seg, dx
+    mov DX, DS
+    mov AX, @data
+    mov DS, AX
+    mov pspSeg, DX
 
-    call parse_args
-    cmp ax, 1
-    jne skip_endProcessing1
+    call parseArgs
+    cmp AX, 1
+    jne skipEndProcessing1
     jmp endProcessing
-skip_endProcessing1:
-    lea ax, keyFileName
-    push ax                ; pointer to file name
-    lea ax, keyBuffer
-    push ax                ; pointer to buffer
-    mov ax, 64
-    push ax                ; max buffer size
+skipEndProcessing1:
+    lea AX, keyFileName
+    push AX                ; pointer to file name
+    lea AX, keyBuffer
+    push AX                ; pointer to buffer
+    mov AX, 64
+    push AX                ; max buffer size
     call loadKeyFile
-    cmp ax, 0
-    jne skip_endProcessing2
+    cmp AX, 0
+    jne skipEndProcessing2
     jmp endProcessing
-skip_endProcessing2:
-    mov keySize, ax
+skipEndProcessing2:
+    mov keySize, AX
 
     ; open input file for reading
-    lea ax, inputFileName
-    push ax
+    lea AX, inputFileName
+    push AX
     call openFileForRead
-    cmp ax, 0FFFFh
-    jne skip_endProcessing3
+    cmp AX, 0FFFFh
+    jne skipEndProcessing3
     jmp endProcessing
-skip_endProcessing3:
-    mov inputFileHandle, ax
+skipEndProcessing3:
+    mov inputFileHandle, AX
 
     ; create output file for writing
-    lea ax, outputFileName
-    push ax
+    lea AX, outputFileName
+    push AX
     call createFileForWrite
-    cmp ax, 0FFFFh
-    jne skip_closeInputAndExit
+    cmp AX, 0FFFFh
+    jne skipCloseInputAndExit
     jmp closeInputAndExit
-skip_closeInputAndExit:
-    mov outputFileHandle, ax
+skipCloseInputAndExit:
+    mov outputFileHandle, AX
 
 processChunks:
     ; read a chunk from the input file
-    lea ax, chunkBuffer
-    push ax                ; buffer offset
-    mov ax, inputFileHandle
-    push ax                ; file handle
-    mov ax, keySize
-    push ax                ; chunk size
+    lea AX, chunkBuffer
+    push AX                ; buffer offset
+    mov AX, inputFileHandle
+    push AX                ; file handle
+    mov AX, keySize
+    push AX                ; chunk size
     call readChunk
-    mov chunkSize, ax
-    cmp ax, 0
-    jne skip_doneProcessing
+    mov chunkSize, AX
+    cmp AX, 0
+    jne skipDoneProcessing
     jmp doneProcessing
-skip_doneProcessing:
+skipDoneProcessing:
 
     cmp AX, keySize
-    je vig_start ;if the same size was read
+    je vigStart ;if the same size was read
     mov keySize, AX ;else, update size of key
     ;Encode/decode the chunk using Vigenère cipher
-vig_start:
+vigStart:
         ;clear registers and prepare loop
         mov CX, keySize
         xor SI, SI
         xor DI, DI
         xor BX, BX
-vig_loop:
+vigLoop:
 ;A = 65
     mov AL, chunkBuffer[SI]     ;load byte from input buffer
     mov AH, keyBuffer[DI] ;load key byte
@@ -105,302 +105,302 @@ vig_loop:
     sub AL, 65 ;subtract to get index
     sub AH, 65
     push AX
-    cmp is_decryption, 0
-    je do_encryption
+    cmp isDecryption, 0
+    je doEncryption
     
-    call PrepDecryption
-    jmp modulo_computation
+    call prepDecryption
+    jmp moduloComputation
 
-do_encryption:
-    call PrepEncryption
+doEncryption:
+    call prepEncryption
 
-modulo_computation:
+moduloComputation:
     mov BH, AL ;get result from addition or subtraction
     push BX
-    call ModuloWith26
+    call moduloWith26
     add AL, 65 ;add back to ascii
     mov chunkBuffer[SI], AL  ;store result into chunkBuffer
     inc SI
     inc DI
-    loop vig_loop
+    loop vigLoop
 
     ; write the chunk to the output file
-    lea ax, chunkBuffer
-    push ax                ; buffer offset
-    mov ax, outputFileHandle
-    push ax                ; file handle
-    mov ax, chunkSize
-    push ax                ; chunk size
+    lea AX, chunkBuffer
+    push AX                ; buffer offset
+    mov AX, outputFileHandle
+    push AX                ; file handle
+    mov AX, chunkSize
+    push AX                ; chunk size
     call writeChunk
 
     jmp processChunks
 doneProcessing:
     ; close input file
-    mov bx, inputFileHandle
-    close_file bx
+    mov BX, inputFileHandle
+    closeFile BX
     ; close output file
-    mov bx, outputFileHandle
-    close_file bx
+    mov BX, outputFileHandle
+    closeFile BX
     jmp endProcessing
 
 closeInputAndExit:
-    mov bx, inputFileHandle
-    close_file bx
+    mov BX, inputFileHandle
+    closeFile BX
 
 endProcessing:
-    exit_dos
+    exitDos
 
 ; load the key file into memory
-; in: [bp+8]=pointer to file name, [bp+6]=pointer to buffer, [bp+4]=max buffer size
+; in: [BP+8]=pointer to file name, [BP+6]=pointer to buffer, [BP+4]=max buffer size
 ; out: AX = number of bytes read
 loadKeyFile proc near
-    push bp
-    mov bp, sp
+    push BP
+    mov BP, SP
 
-    mov ah, 3Dh
-    xor al, al
-    mov dx, [bp+8]
+    mov AH, 3Dh
+    xor AL, AL
+    mov DX, [BP+8]
     int 21h
     jc fileKeyError
-    mov bx, ax
+    mov BX, AX
 
-    mov ax, 3F00h
-    mov cx, [bp+4]
-    mov dx, [bp+6]
+    mov AX, 3F00h
+    mov CX, [BP+4]
+    mov DX, [BP+6]
     int 21h
     jc fileKeyError
-    push ax
+    push AX
 
-    mov ax, 3E00h
+    mov AX, 3E00h
     int 21h
-    pop ax
+    pop AX
     jmp fileKeyDone
 
 fileKeyError:
-    mov ax, 0
+    mov AX, 0
 
 fileKeyDone:
-    pop bp
+    pop BP
     ret 6
 loadKeyFile endp
 
 ; open a file for reading
-; in: [bp+4]=pointer to file name
+; in: [BP+4]=pointer to file name
 ; out: AX = file handle or 0FFFFh on error
 openFileForRead proc near
-    push bp
-    mov bp, sp
-    mov ax, 3D00h
-    mov dx, [bp+4]
+    push BP
+    mov BP, SP
+    mov AX, 3D00h
+    mov DX, [BP+4]
     int 21h
     jc openReadError
     jmp openReadDone
 
 openReadError:
-    mov ax, 0FFFFh
+    mov AX, 0FFFFh
 openReadDone:
-    pop bp
+    pop BP
     ret 2
 openFileForRead endp
 
 ; create a file for writing
-; in: [bp+4]=pointer to file name
+; in: [BP+4]=pointer to file name
 ; out: AX = file handle or 0FFFFh on error
 createFileForWrite proc near
-    push bp
-    mov bp, sp
-    mov ah, 3Ch
-    xor cx, cx
-    mov dx, [bp+4]
+    push BP
+    mov BP, SP
+    mov AH, 3Ch
+    xor CX, CX
+    mov DX, [BP+4]
     int 21h
     jc createWriteError
     jmp createWriteDone
 
 createWriteError:
-    mov ax, 0FFFFh
+    mov AX, 0FFFFh
 createWriteDone:
-    pop bp
+    pop BP
     ret 2
 createFileForWrite endp
 
 ; read a chunk from a file
-; in: [bp+8]=buffer, [bp+6]=file handle, [bp+4]=chunk size
+; in: [BP+8]=buffer, [BP+6]=file handle, [BP+4]=chunk size
 ; out: AX = number of bytes read
 readChunk proc near
-    push bp
-    mov bp, sp
-    mov bx, [bp+6]
-    mov dx, [bp+8]
-    mov cx, [bp+4]
-    mov ax, 3F00h
+    push BP
+    mov BP, SP
+    mov BX, [BP+6]
+    mov DX, [BP+8]
+    mov CX, [BP+4]
+    mov AX, 3F00h
     int 21h
     jc readError
-    pop bp
+    pop BP
     ret 6
 readError:
-    mov ax, 0
-    pop bp
+    mov AX, 0
+    pop BP
     ret 6
 readChunk endp
 
 ; write a chunk to a file
-; in: [bp+8]=buffer offset, [bp+6]=file handle, [bp+4]=chunk size
+; in: [BP+8]=buffer offset, [BP+6]=file handle, [BP+4]=chunk size
 writeChunk proc near
-    push bp
-    mov bp, sp
-    mov cx, [bp+4]
-    mov dx, [bp+8]
-    mov bx, [bp+6]
-    mov ax, 4000h
+    push BP
+    mov BP, SP
+    mov CX, [BP+4]
+    mov DX, [BP+8]
+    mov BX, [BP+6]
+    mov AX, 4000h
     int 21h
 
-    pop bp
+    pop BP
     ret 8
 writeChunk endp
 
 ; parse command line arguments
-; out: keyFileName = arg1, inputFileName = arg2, outputFileName = arg3, is_decryption = arg4 (E/D)
+; out: keyFileName = arg1, inputFileName = arg2, outputFileName = arg3, isDecryption = arg4 (E/D)
 ; AX = 0 if args found, 1 if not enough args or invalid mode
-parse_args proc near
-    mov es, word ptr psp_seg
+parseArgs proc near
+    mov ES, word ptr pspSeg
 
-    xor cx, cx
-    mov cl, es:[80h]
-    cmp cl, 0
-    jne skip_no_args
-    jmp no_args
-skip_no_args:
+    xor CX, CX
+    mov CL, ES:[80h]
+    cmp CL, 0
+    jne skipNoArgs
+    jmp noArgs
+skipNoArgs:
 
-    mov si, 81h
+    mov SI, 81h
 
-skip_leading:
-    mov al, es:[si]
-    cmp al, ' '
-    jne start_arg1
-    inc si
-    loop skip_leading
-    jmp no_args
+skipLeading:
+    mov AL, ES:[SI]
+    cmp AL, ' '
+    jne startArg1
+    inc SI
+    loop skipLeading
+    jmp noArgs
 
-start_arg1:
-    mov di, offset keyFileName
-parse_arg1:
-    mov al, es:[si]
-    cmp al, 0Dh     ; Carriage return
-    jne skip_end_of_line1
-    jmp end_of_line
-skip_end_of_line1:
-    cmp al, ' '
-    je arg1_done
-    mov [di], al
-    inc di
-    inc si
-    loop parse_arg1
-    jmp end_of_line
+startArg1:
+    mov DI, offset keyFileName
+parseArg1:
+    mov AL, ES:[SI]
+    cmp AL, 0Dh     ; Carriage return
+    jne skipEndOfLine1
+    jmp endOfLine
+skipEndOfLine1:
+    cmp AL, ' '
+    je arg1Done
+    mov [DI], AL
+    inc DI
+    inc SI
+    loop parseArg1
+    jmp endOfLine
 
-arg1_done:
-    mov byte ptr [di], 0
+arg1Done:
+    mov byte ptr [DI], 0
 
-skip_spaces1:
-    mov al, es:[si]
-    cmp al, ' '
-    jne start_arg2
-    inc si
-    loop skip_spaces1
-    jmp end_of_line
+skipSpaces1:
+    mov AL, ES:[SI]
+    cmp AL, ' '
+    jne startArg2
+    inc SI
+    loop skipSpaces1
+    jmp endOfLine
 
-start_arg2:
-    mov di, offset inputFileName
-parse_arg2:
-    mov al, es:[si]
-    cmp al, 0Dh     ; Carriage return
-    jne skip_end_of_line2
-    jmp end_of_line
-skip_end_of_line2:
-    cmp al, ' '
-    je arg2_done
-    mov [di], al
-    inc di
-    inc si
-    loop parse_arg2
-    jmp end_of_line
+startArg2:
+    mov DI, offset inputFileName
+parseArg2:
+    mov AL, ES:[SI]
+    cmp AL, 0Dh     ; Carriage return
+    jne skipEndOfLine2
+    jmp endOfLine
+skipEndOfLine2:
+    cmp AL, ' '
+    je arg2Done
+    mov [DI], AL
+    inc DI
+    inc SI
+    loop parseArg2
+    jmp endOfLine
 
-arg2_done:
-    mov byte ptr [di], 0
+arg2Done:
+    mov byte ptr [DI], 0
 
-skip_spaces2:
-    mov al, es:[si]
-    cmp al, ' '
-    jne start_arg3
-    inc si
-    loop skip_spaces2
-    jmp end_of_line
+skipSpaces2:
+    mov AL, ES:[SI]
+    cmp AL, ' '
+    jne startArg3
+    inc SI
+    loop skipSpaces2
+    jmp endOfLine
 
-start_arg3:
-    mov di, offset outputFileName
-parse_arg3:
-    mov al, es:[si]
-    cmp al, 0Dh     ; Carriage return
-    jne skip_end_of_line3
-    jmp end_of_line
-skip_end_of_line3:
-    cmp al, ' '
-    je arg3_done
-    mov [di], al
-    inc di
-    inc si
-    loop parse_arg3
+startArg3:
+    mov DI, offset outputFileName
+parseArg3:
+    mov AL, ES:[SI]
+    cmp AL, 0Dh     ; Carriage return
+    jne skipEndOfLine3
+    jmp endOfLine
+skipEndOfLine3:
+    cmp AL, ' '
+    je arg3Done
+    mov [DI], AL
+    inc DI
+    inc SI
+    loop parseArg3
 
-arg3_done:
-    mov byte ptr [di], 0
+arg3Done:
+    mov byte ptr [DI], 0
 
-skip_spaces3:
-    mov al, es:[si]
-    cmp al, ' '
-    jne start_arg4
-    inc si
-    loop skip_spaces3
-    jmp end_of_line
+skipSpaces3:
+    mov AL, ES:[SI]
+    cmp AL, ' '
+    jne startArg4
+    inc SI
+    loop skipSpaces3
+    jmp endOfLine
 
-start_arg4:
-    mov al, es:[si]
-    cmp al, 0Dh
-    jne skip_end_of_line4
-    jmp end_of_line
-skip_end_of_line4:
+startArg4:
+    mov AL, ES:[SI]
+    cmp AL, 0Dh
+    jne skipEndOfLine4
+    jmp endOfLine
+skipEndOfLine4:
     ; Accept only one char for mode
-    cmp al, 'E'
-    je set_encrypt
-    cmp al, 'e'
-    je set_encrypt
-    cmp al, 'D'
-    je set_decrypt
-    cmp al, 'd'
-    je set_decrypt
-    jmp end_of_line
+    cmp AL, 'E'
+    je setEncrypt
+    cmp AL, 'e'
+    je setEncrypt
+    cmp AL, 'D'
+    je setDecrypt
+    cmp AL, 'd'
+    je setDecrypt
+    jmp endOfLine
 
-set_encrypt:
-    mov byte ptr [is_decryption], 0
-    mov ax, 0
+setEncrypt:
+    mov byte ptr [isDecryption], 0
+    mov AX, 0
     ret 0
 
-set_decrypt:
-    mov byte ptr [is_decryption], 1
-    mov ax, 0
+setDecrypt:
+    mov byte ptr [isDecryption], 1
+    mov AX, 0
     ret 0
 
-end_of_line:
-    mov ax, 1
+endOfLine:
+    mov AX, 1
     ret 0
 
-no_args:
+noArgs:
     mov byte ptr [keyFileName], 0
     mov byte ptr [inputFileName], 0
     mov byte ptr [outputFileName], 0
-    mov ax, 1
+    mov AX, 1
     ret 0
-parse_args endp
+parseArgs endp
 
-PrepEncryption proc near ;PrepEncryption(char a, char b) returns addition_result
+prepEncryption proc near ;prepEncryption(char a, char b) returns addition_result
     push BP
     mov BP, SP
     ;stack: BP, IP, a, b
@@ -411,9 +411,9 @@ PrepEncryption proc near ;PrepEncryption(char a, char b) returns addition_result
     xor AH, AH
     pop BP
     ret 2 ;clear stack and give execution back to main
-PrepEncryption endp
+prepEncryption endp
 
-PrepDecryption proc near ;PrepDecryption(char a, char b) returns addition_result
+prepDecryption proc near ;prepDecryption(char a, char b) returns addition_result
     push BP
     mov BP, SP
     ;stack: BP, IP, a, b
@@ -422,15 +422,15 @@ PrepDecryption proc near ;PrepDecryption(char a, char b) returns addition_result
     mov AL, SS:[BP+4] ;get second byte from stack
     sub AL, AH
     cmp AL, 0 ;handle negative values
-    jge no_wrap
+    jge noWrap
     add AL, 26
-    no_wrap:
+    noWrap:
         xor AH, AH
         pop BP
         ret 2 ;clear stack and give execution back to main
-PrepDecryption endp
+prepDecryption endp
 
-ModuloWith26 proc near ;ModuloWith26(char a)
+moduloWith26 proc near ;moduloWith26(char a)
     push BP
     mov BP, SP
     ;stack: BP, IP, a
@@ -439,16 +439,16 @@ ModuloWith26 proc near ;ModuloWith26(char a)
     mov AL, SS:[BP+5] ;get byte from stack
     mov BL, 26
     cmp AL, BL
-    jl no_computation ;if less than 26, that is modulo result
+    jl noComputation ;if less than 26, that is modulo result
     ;else, do modulo computation
     div BL ;AX = AL / 26, AH = remainder
     mov AL, AH ;move remainder to AL
 
-    no_computation:
+    noComputation:
         xor AH, AH
         xor BX, BX
         pop BP
         ret 2 ;clear stack and give execution back to main
-ModuloWith26 endp
+moduloWith26 endp
 
 end start
