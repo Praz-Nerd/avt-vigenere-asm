@@ -14,9 +14,9 @@ ENDM
 
 .data
     psp_seg dw 0
-    keyFileName db 128 dup(0)        
-    inputFileName db 128 dup(0)     
-    outputFileName db 128 dup(0) 
+    keyFileName db 32 dup(0)        
+    inputFileName db 32 dup(0)     
+    outputFileName db 32 dup(0) 
     is_decryption DB 1 ;0 for encryption, 1 for decryption
 
     keySize dw ?                       
@@ -24,8 +24,8 @@ ENDM
     inputFileHandle dw ?              
     outputFileHandle dw ?              
 
-    keyBuffer db 256 dup(?)           
-    chunkBuffer db 512 dup(?)          
+    keyBuffer db 64 dup(?)           
+    chunkBuffer db 64 dup(?)          
 
 .code
 start:
@@ -43,7 +43,7 @@ skip_endProcessing1:
     push ax                ; pointer to file name
     lea ax, keyBuffer
     push ax                ; pointer to buffer
-    mov ax, 256
+    mov ax, 64
     push ax                ; max buffer size
     call loadKeyFile
     cmp ax, 0
@@ -78,7 +78,7 @@ processChunks:
     push ax                ; buffer offset
     mov ax, inputFileHandle
     push ax                ; file handle
-    mov ax, 512
+    mov ax, 64
     push ax                ; chunk size
     call readChunk
     mov chunkSize, ax
@@ -189,14 +189,14 @@ createWriteDone:
 createFileForWrite endp
 
 ; read a chunk from a file
-; in: [bp+6]=buffer, [bp+4]=file handle, [bp+2]=chunk size
+; in: [bp+8]=buffer, [bp+6]=file handle, [bp+4]=chunk size
 ; out: AX = number of bytes read
 readChunk proc near
     push bp
     mov bp, sp
-    mov bx, [bp+4]
-    mov dx, [bp+6]
-    mov cx, [bp+2]
+    mov bx, [bp+6]
+    mov dx, [bp+8]
+    mov cx, [bp+4]
     mov ax, 3F00h
     int 21h
     jc readError
@@ -213,8 +213,6 @@ readChunk endp
 writeChunk proc near
     push bp
     mov bp, sp
-
-    ; removed seek logic, just write at current position
     mov cx, [bp+4]
     mov dx, [bp+8]
     mov bx, [bp+6]
